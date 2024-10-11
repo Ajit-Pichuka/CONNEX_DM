@@ -1,0 +1,95 @@
+name: dispatch-dry
+
+on:
+  pull_request:
+    branches:
+    - dev*
+    - qa*
+    - uat*
+    - prod*
+    types: opened
+  
+jobs:
+  dispath-dry:
+    env:
+      ref_name: ${{github.ref_name}}
+    name: 'dispatch-dry'  
+    runs-on: ubuntu-latest
+    steps:
+    
+      - run: echo $files
+      - uses: actions/checkout@v3
+        with:
+           fetch-depth: 0
+           
+      - uses: actions/checkout@v3
+        with:
+          repository: danone/onesource.cicd.actions
+          token: ${{ secrets.ORCHESTRATION_PAT }}
+          path: act    
+    
+      - name: get_files_from_title
+        run: |
+          echo "Title: ${{ github.event.pull_request.title }}"
+          echo "config_file=$(echo "${{ github.event.pull_request.title }}" | cut -d "|" -f2 | cut -d "|" -f1)" >> $GITHUB_ENV
+          echo ${{ env.config_file }}
+
+      - name: Checkout cicd-actions
+        uses: actions/checkout@v3
+        with:
+            repository: danone/onesource.cicd.actions
+            token: ${{ secrets.ORCHESTRATION_PAT }}
+            path: act
+            persist-credentials: false		
+
+      - name: Deployment type preparation - Pull Request
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref,'cp_release') 
+        run: |   
+          echo depl_type=$(echo "PullRequest") >> $GITHUB_ENV
+          echo event_type=$(echo "sf-deploy-dry") >> $GITHUB_ENV
+          echo ref=$(echo "${{ github.ref }}") >> $GITHUB_ENV
+          echo tgt_env=$(echo "${{ github.event.pull_request.base.ref }}") >> $GITHUB_ENV
+          echo files=$(echo "") >> $GITHUB_ENV
+      - name: Deployment type preparation - CherryPick PR
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref,'cp_release')
+        run: |   
+           echo depl_type=$(echo "CherryPickPR") >> $GITHUB_ENV
+           echo event_type=$(echo "sf-deploy-forced-dry") >> $GITHUB_ENV
+           echo ref=$(echo "${{ github.ref }}") >> $GITHUB_ENV
+           echo tgt_env=$(echo "${{ github.event.pull_request.base.ref }}") >> $GITHUB_ENV
+           str=$(git log -1 --pretty="format:" --name-only);[ ! -z "$str" ] && num=1 || num=2
+           echo files=$(git log -$num --name-only | sed -r 's/^.+\///' | grep ^V[0-999] | sed -z 's/\n/,/g;s/,$/\n/') >> $GITHUB_ENV
+
+      - name: ${{env.depl_type}} deployment
+        id: deployment
+        uses: ./act/wf-dispatcher   
+        with:
+          owner: danone
+          repo: adm.cicd.orchestration
+          token: ${{ secrets.ORCHESTRATION_PAT }}
+          event_type: ${{ env.event_type }}
+          run_id: ${{ github.run_id }}
+          run_attempt: ${{github.run_attempt}}
+          client_payload: '{"ref": "${{ env.ref }}","repo": "${{ github.repository }}", "tgt_env": "${{env.tgt_env}}", "depl_type": "${{env.depl_type}}", "files": "${{env.files}}","scope_run_mode": "--dry-run"  }'  
+
+      - name: Snowflake Applied Scripts
+        run: |   
+          echo "dry_run_scripts:" ${{ steps.deployment.outputs.resultlog  }}
+      
+      - name: Comment PR
+        uses: thollander/actions-comment-pull-request@v1
+        with:
+          message: |
+            When Merged, following scripts will be executed: 
+            ${{ steps.deployment.outputs.resultlog  }}
+          GITHUB_TOKEN: ${{ secrets.ORCHESTRATION_PAT }}
+
+  dispath-dry-auth:
+    name: 'dispatch-dry_auth'  
+    needs: dispath-dry
+    runs-on: ubuntu-latest
+    environment: ${{ github.base_ref }}-dry
+    steps:
+      - name: Authorization not required
+        run: |   
+          echo "Authorization not required"

@@ -1,0 +1,36 @@
+name: Rollback
+on: 
+  workflow_dispatch:
+    inputs:
+      UserComment:
+        required: false
+        description: (Optional) User Functional Comments
+        default: ''
+jobs:         
+  rollback_dispatch:
+    runs-on: ubuntu-20.04
+    environment: ${{github.ref_name}} 
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        path: main
+        fetch-depth: 0
+
+    - uses: actions/checkout@v3
+      with:
+        repository: danone/onesource.cicd.actions
+        token: ${{ secrets.ORCHESTRATION_PAT }}
+        path: act
+
+    - name: Dispatch
+      uses: ./act/wf-dispatcher   
+      if: ${{ env.script_version == env.rb_script_version }}
+      with:
+        owner: danone
+        repo: adm.cicd.orchestration
+        token: ${{ secrets.ORCHESTRATION_PAT }}
+        event_type: sf-rollback
+        run_id: ${{ github.run_id }}
+        run_attempt: ${{github.run_attempt}}
+        client_payload: '{"ref": "${{ github.ref }}", "repo": "${{ github.repository }}", "rb_version": "${{ env.rb_script_version }}", "rb_dir": "${{env.rb_dir}}", "ref_name": "${{github.ref_name}}", "UserComment": "${{ github.event.inputs.UserComment }}"}'

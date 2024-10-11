@@ -1,0 +1,2 @@
+--Sample file ilustrative for naming conventions. To be remvoed
+--Script to provide rollback SQL for version 1.1

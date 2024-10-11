@@ -1,0 +1,4 @@
+# file paths are relative to change_scripts dir
+name: config sample
+files:
+  - V1.0.0__table.schema1.table1.create.sql

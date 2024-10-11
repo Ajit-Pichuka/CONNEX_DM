@@ -1,0 +1,32 @@
+name: Drop cloned schemas
+
+on:
+  workflow_dispatch:
+    inputs:
+      uid:
+        description: your clone identifier
+        required: true
+
+jobs:
+  drop-cloned-schemas:
+    runs-on: ubuntu-20.04
+    steps:
+    
+    - name: Checkout cicd-actions
+      uses: actions/checkout@v3
+      with:
+        repository: danone/onesource.cicd.actions
+        token: ${{ secrets.ORCHESTRATION_PAT }}
+        path: act
+        
+    - name: Dispatch to orchestration
+      uses: ./act/wf-dispatcher
+      with:
+        owner: danone
+        repo: adm.cicd.orchestration
+        token: ${{ secrets.ORCHESTRATION_PAT }}
+        event_type: sf-drop
+        run_id: ${{ github.run_id }}
+        run_attempt: ${{github.run_attempt}}
+        client_payload: '{"repo": "${{ github.repository }}","uid": "${{github.event.inputs.uid}}"}'
+ 
